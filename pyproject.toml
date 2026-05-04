@@ -5,6 +5,7 @@ description = "Pipeline de qualité de l'eau avec Databricks DLT"
 requires-python = ">=3.11"
 
 dependencies = [
+    "dlt[databricks]>=1.4",
     "pyspark>=3.5",
     "delta-spark>=3.2",
     "databricks-sdk>=0.28",

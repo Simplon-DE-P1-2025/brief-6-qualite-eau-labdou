@@ -4,7 +4,7 @@ Pipeline de traitement et analyse de la qualité de l'eau avec Databricks, Delta
 
 ## Objectif
 
-Ingérer, transformer et analyser des données de qualité de l'eau en appliquant une architecture medallion (Bronze / Silver / Gold) via Databricks DLT, avec un pipeline CI/CD automatisé.
+Ingérer, transformer et analyser des données de qualité de l'eau en appliquant une architecture medallion (Bronze / Silver / Gold). L'ingestion depuis l'API HTTP est gérée par [`dlt`](https://dlthub.com) (pagination, chargement incrémental, schéma automatique) ; les transformations Bronze → Silver → Gold sont définies via Databricks Delta Live Tables, avec un pipeline CI/CD automatisé.
 
 ## Structure du projet
 
@@ -16,6 +16,15 @@ Ingérer, transformer et analyser des données de qualité de l'eau en appliquan
 ├── pyproject.toml      # Dépendances et configuration du projet
 └── .gitignore
 ```
+
+## Stack technique
+
+| Couche | Outil |
+|--------|-------|
+| Ingestion API | [`dlt`](https://dlthub.com) — pagination, incrémental, schéma automatique |
+| Transformation | Databricks Delta Live Tables |
+| Stockage | Delta Lake / Unity Catalog |
+| Orchestration | Databricks Workflows |
 
 ## Prérequis
 
