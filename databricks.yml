@@ -1,0 +1,37 @@
+bundle:
+  name: qualite-eau-labdou
+
+variables:
+  databricks_host:
+    description: "URL du workspace Databricks (ex: https://adb-xxx.azuredatabricks.net)"
+
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: ${var.databricks_host}
+    resources:
+      pipelines:
+        pipeline_dlt:
+          name: "[dev] qualite-eau-pipeline"
+          development: true
+          catalog: qualite_eau
+          target: bronze
+          libraries:
+            - notebook:
+                path: ./notebooks/02_pipeline_dlt.py
+
+  prod:
+    mode: production
+    workspace:
+      host: ${var.databricks_host}
+    resources:
+      pipelines:
+        pipeline_dlt:
+          name: qualite-eau-pipeline
+          development: false
+          catalog: qualite_eau
+          target: bronze
+          libraries:
+            - notebook:
+                path: ./notebooks/02_pipeline_dlt.py
