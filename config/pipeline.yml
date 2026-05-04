@@ -1,0 +1,12 @@
+catalog: qualite_eau
+schema_bronze: bronze
+schema_silver: silver
+schema_gold: gold
+
+source:
+  format: csv
+  path: /Volumes/qualite_eau/raw/
+
+pipeline:
+  continuous: false
+  development: true
