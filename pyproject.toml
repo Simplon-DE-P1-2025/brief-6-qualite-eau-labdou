@@ -17,6 +17,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.4",
+    "python-semantic-release>=9.0",
 ]
 
 [build-system]
@@ -32,3 +33,12 @@ select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+changelog_file = "CHANGELOG.md"
+build_command = false
+upload_to_pypi = false
+upload_to_vcs_release = true
+commit_parser = "angular"
