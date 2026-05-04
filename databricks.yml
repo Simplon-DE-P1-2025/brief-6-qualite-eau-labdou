@@ -3,7 +3,7 @@ bundle:
 
 variables:
   databricks_host:
-    description: "URL du workspace Databricks (ex: https://adb-xxx.azuredatabricks.net)"
+    description: "URL du workspace Databricks Azure"
 
 targets:
   dev:
@@ -13,13 +13,45 @@ targets:
     resources:
       pipelines:
         pipeline_dlt:
-          name: "[dev] qualite-eau-pipeline"
+          name: "[dev] qualite-eau-dlt"
           development: true
           catalog: qualite_eau
-          target: bronze
+          target: silver
           libraries:
             - notebook:
-                path: ./notebooks/02_pipeline_dlt.py
+                path: ./notebooks/02_bronze.py
+            - notebook:
+                path: ./notebooks/03_silver.py
+            - notebook:
+                path: ./notebooks/04_gold.py
+
+      jobs:
+        pipeline_complet:
+          name: "[dev] qualite-eau-pipeline-complet"
+          job_clusters:
+            - job_cluster_key: main_cluster
+              new_cluster:
+                spark_version: "15.4.x-scala2.12"
+                node_type_id: Standard_DS3_v2
+                num_workers: 2
+          tasks:
+            - task_key: ingestion
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/01_ingestion.py
+
+            - task_key: transformation_dlt
+              depends_on:
+                - task_key: ingestion
+              pipeline_task:
+                pipeline_id: ${resources.pipelines.pipeline_dlt.id}
+
+            - task_key: validation_ge
+              depends_on:
+                - task_key: transformation_dlt
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/05_validation_ge.py
 
   prod:
     mode: production
@@ -28,10 +60,45 @@ targets:
     resources:
       pipelines:
         pipeline_dlt:
-          name: qualite-eau-pipeline
+          name: qualite-eau-dlt
           development: false
           catalog: qualite_eau
-          target: bronze
+          target: silver
           libraries:
             - notebook:
-                path: ./notebooks/02_pipeline_dlt.py
+                path: ./notebooks/02_bronze.py
+            - notebook:
+                path: ./notebooks/03_silver.py
+            - notebook:
+                path: ./notebooks/04_gold.py
+
+      jobs:
+        pipeline_complet:
+          name: qualite-eau-pipeline-complet
+          schedule:
+            quartz_cron_expression: "0 0 2 * * ?"
+            timezone_id: Europe/Paris
+          job_clusters:
+            - job_cluster_key: main_cluster
+              new_cluster:
+                spark_version: "15.4.x-scala2.12"
+                node_type_id: Standard_DS3_v2
+                num_workers: 2
+          tasks:
+            - task_key: ingestion
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/01_ingestion.py
+
+            - task_key: transformation_dlt
+              depends_on:
+                - task_key: ingestion
+              pipeline_task:
+                pipeline_id: ${resources.pipelines.pipeline_dlt.id}
+
+            - task_key: validation_ge
+              depends_on:
+                - task_key: transformation_dlt
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/05_validation_ge.py
