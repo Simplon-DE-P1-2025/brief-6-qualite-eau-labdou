@@ -2,63 +2,63 @@
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC # 01 — Ingestion
-# MAGIC Téléchargement du dataset data.gouv.fr via `dlt` (dlthub) et écriture dans `qualite_eau.bronze`.
+# MAGIC # 01 — Ingestion Hub'Eau
+# MAGIC Ingestion incrémentale depuis l'API Hub'Eau qualité eau potable via `dlt` (dlthub).
+# MAGIC
+# MAGIC - API : https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis
+# MAGIC - Destination : `qualite_eau.bronze.resultats_dis`
+# MAGIC - Mode : merge incrémental sur `date_prelevement`
 
 # COMMAND ----------
-%pip install "dlt[databricks]>=1.4" --quiet
+%pip install "dlt[databricks,rest_api]>=1.4" --quiet
 dbutils.library.restartPython()
 
 # COMMAND ----------
 import os
-import io
 import dlt  # dlthub — pas le module Databricks DLT
-import requests
-import pandas as pd
-
-# URL de la ressource CSV sur data.gouv.fr
-# À mettre à jour si l'identifiant de ressource change (onglet "Fichiers" du dataset)
-SOURCE_URL = "https://www.data.gouv.fr/fr/datasets/r/e7834586-1f62-4d07-8b72-d77ff35c82fb"
+from dlt.sources.rest_api import rest_api_source
 
 os.environ["DATABRICKS_SERVER_HOSTNAME"] = dbutils.secrets.get("qualite-eau", "databricks_host")
 os.environ["DATABRICKS_HTTP_PATH"]       = dbutils.secrets.get("qualite-eau", "databricks_http_path")
 os.environ["DATABRICKS_ACCESS_TOKEN"]    = dbutils.secrets.get("qualite-eau", "databricks_token")
 
+BASE_URL = "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/"
+
 # COMMAND ----------
 
-@dlt.resource(name="raw_controles_sanitaires", write_disposition="replace")
-def controles_sanitaires():
-    response = requests.get(SOURCE_URL, timeout=180)
-    response.raise_for_status()
-
-    df = pd.read_csv(
-        io.BytesIO(response.content),
-        sep=";",
-        encoding="utf-8",
-        dtype=str,
-        low_memory=False,
-    )
-
-    # Normalisation des noms de colonnes : minuscules, sans accents, espaces → _
-    df.columns = (
-        df.columns.str.lower()
-        .str.strip()
-        .str.replace(r"[\s']+", "_", regex=True)
-        .str.replace(r"[éèê]", "e", regex=True)
-        .str.replace(r"[àâ]", "a", regex=True)
-        .str.replace(r"[ôö]", "o", regex=True)
-        .str.replace(r"[^a-z0-9_]", "", regex=True)
-    )
-
-    yield from df.to_dict(orient="records")
-
+source = rest_api_source({
+    "client": {
+        "base_url": BASE_URL,
+    },
+    "resources": [
+        {
+            "name": "resultats_dis",
+            "endpoint": {
+                "path": "resultats_dis",
+                "params": {"size": 10000},
+                "paginator": {
+                    "type": "json_link",
+                    "next_url_path": "next",
+                },
+                "data_selector": "data",
+                "incremental": {
+                    "cursor_path": "date_prelevement",
+                    "initial_value": "2020-01-01",
+                    "param": "date_min_prelevement",
+                },
+            },
+            "primary_key": ["code_prelevement", "code_parametre"],
+            "write_disposition": "merge",
+        }
+    ],
+})
 
 # COMMAND ----------
 pipeline = dlt.pipeline(
-    pipeline_name="qualite_eau_ingestion",
+    pipeline_name="qualite_eau_hubeau",
     destination="databricks",
     dataset_name="qualite_eau.bronze",
 )
 
-load_info = pipeline.run(controles_sanitaires())
+load_info = pipeline.run(source)
 print(load_info)
