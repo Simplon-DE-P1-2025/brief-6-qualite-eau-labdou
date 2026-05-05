@@ -68,11 +68,18 @@ con.execute("SELECT * FROM resultats LIMIT 5").df()
 # ## 3. Champs de conformité — valeurs distinctes
 
 # %%
-conformite_cols = [c for c in df_resultats.columns if "conform" in c.lower() or "conclusion" in c.lower()]
-print("Colonnes conformité :", conformite_cols)
+# 4 champs de conformité identifiés dans les données Hub'Eau :
+# - bact = bactériologique | pc = physico-chimique
+# - limites = limites sanitaires réglementaires | references = références qualité indicatives
+CONFORMITE_COLS = [
+    "conformite_limites_bact_prelevement",
+    "conformite_limites_pc_prelevement",
+    "conformite_references_bact_prelevement",
+    "conformite_references_pc_prelevement",
+]
 
 # %%
-for col in conformite_cols:
+for col in CONFORMITE_COLS:
     print(f"\n── {col} ──")
     display(con.execute(f"""
         SELECT "{col}" AS valeur,
@@ -86,7 +93,7 @@ for col in conformite_cols:
 # ## 4. Taux de null sur les colonnes clés
 
 # %%
-cols_cles = conformite_cols + [
+cols_cles = CONFORMITE_COLS + [
     "code_commune", "nom_commune", "date_prelevement", "libelle_parametre"
 ]
 cols_cles = [c for c in cols_cles if c in df_resultats.columns]
@@ -101,21 +108,18 @@ con.execute(f"SELECT * FROM ({null_query}) ORDER BY pct_null DESC").df()
 # ## 5. Paramètres non conformes les plus fréquents
 
 # %%
-# Adapter le nom de colonne selon ce qu'on observe en section 3
-CHAMP_CONFORMITE = (
-    conformite_cols[0] if conformite_cols else "conclusion_conformite_prelevement_parametre"
-)
-
-con.execute(f"""
+# Paramètres non conformes sur les limites sanitaires (bact + pc)
+con.execute("""
     SELECT
         libelle_parametre,
-        "{CHAMP_CONFORMITE}" AS conformite,
+        conformite_limites_bact_prelevement  AS bact,
+        conformite_limites_pc_prelevement    AS pc,
         COUNT(*) AS nb
     FROM resultats
-    WHERE "{CHAMP_CONFORMITE}" NOT IN ('C', 'Conforme', 'S', 'D')
-       OR "{CHAMP_CONFORMITE}" IS NULL
-    GROUP BY 1, 2
-    ORDER BY 3 DESC
+    WHERE conformite_limites_bact_prelevement = 'N'
+       OR conformite_limites_pc_prelevement   = 'N'
+    GROUP BY 1, 2, 3
+    ORDER BY 4 DESC
     LIMIT 20
 """).df()
 
@@ -143,28 +147,48 @@ con.execute("""
 # À ajuster selon les vrais noms de colonnes observés en sections 2 et 3.
 
 # %%
-con.execute(f"""
+con.execute("""
 CREATE OR REPLACE VIEW silver AS
 SELECT
     r.code_commune,
     r.nom_commune,
-    cog.dep                                         AS code_departement,
-    cog.reg                                         AS code_region,
-    cog.libelle                                     AS libelle_commune,
-    TRY_CAST(r.date_prelevement AS DATE)            AS date_prelevement,
-    YEAR(TRY_CAST(r.date_prelevement AS DATE))      AS annee_prelevement,
+    cog.dep                                          AS code_departement,
+    cog.reg                                          AS code_region,
+    cog.libelle                                      AS libelle_commune,
+    TRY_CAST(r.date_prelevement AS DATE)             AS date_prelevement,
+    YEAR(TRY_CAST(r.date_prelevement AS DATE))       AS annee_prelevement,
     r.libelle_parametre,
     CASE
-        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(bacter|coli|entero|coliforme).*' THEN 'microbiologie'
-        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(tritium|dose total).*'           THEN 'radioactivite'
+        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(bacter|coli|entero|coliforme).*'
+            THEN 'microbiologie'
+        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(tritium|dose total).*'
+            THEN 'radioactivite'
         ELSE 'chimie'
-    END                                             AS categorie_parametre,
-    r."{CHAMP_CONFORMITE}"                          AS conclusion_conformite,
-    r."{CHAMP_CONFORMITE}" IN ('C', 'Conforme')     AS est_conforme,
+    END                                              AS categorie_parametre,
+
+    -- Conformité bactériologique
+    r.conformite_limites_bact_prelevement            AS conformite_bact_limites,
+    r.conformite_references_bact_prelevement         AS conformite_bact_references,
+    r.conformite_limites_bact_prelevement = 'C'      AS est_conforme_bact_limites,
+    r.conformite_references_bact_prelevement = 'C'   AS est_conforme_bact_references,
+
+    -- Conformité physico-chimique
+    r.conformite_limites_pc_prelevement              AS conformite_pc_limites,
+    r.conformite_references_pc_prelevement           AS conformite_pc_references,
+    r.conformite_limites_pc_prelevement = 'C'        AS est_conforme_pc_limites,
+    r.conformite_references_pc_prelevement = 'C'     AS est_conforme_pc_references,
+
+    -- Conformité globale : conforme si bact ET pc sont conformes aux limites
+    (r.conformite_limites_bact_prelevement = 'C'
+     AND r.conformite_limites_pc_prelevement = 'C')  AS est_conforme_global,
+
+    -- Cause de non-conformité
     CASE
-        WHEN r."{CHAMP_CONFORMITE}" NOT IN ('C', 'Conforme')
+        WHEN r.conformite_limites_bact_prelevement != 'C'
+          OR r.conformite_limites_pc_prelevement   != 'C'
         THEN r.libelle_parametre
-    END                                             AS cause_non_conformite,
+    END                                              AS cause_non_conformite,
+
     u.code_reseau,
     u.nom_reseau
 FROM resultats r
@@ -180,33 +204,35 @@ con.execute("SELECT * FROM silver LIMIT 5").df()
 # ## 8. Prototypes Gold
 
 # %%
-# Gold 1 — Conformité par commune
+# Gold 1 — Conformité par commune (bact + pc différenciés)
 con.execute("""
 SELECT
     code_commune, libelle_commune, code_departement, annee_prelevement,
-    COUNT(*)                                    AS nb_analyses,
-    SUM(est_conforme::INT)                      AS nb_conformes,
-    ROUND(100.0 * AVG(est_conforme::INT), 2)    AS taux_conformite_pct
+    COUNT(*)                                                AS nb_analyses,
+    ROUND(100.0 * AVG(est_conforme_bact_limites::INT), 2)  AS taux_bact_limites_pct,
+    ROUND(100.0 * AVG(est_conforme_pc_limites::INT), 2)    AS taux_pc_limites_pct,
+    ROUND(100.0 * AVG(est_conforme_global::INT), 2)        AS taux_global_pct
 FROM silver
 GROUP BY 1, 2, 3, 4
-ORDER BY taux_conformite_pct ASC
+ORDER BY taux_global_pct ASC
 LIMIT 10
 """).df()
 
 # %%
-# Gold 5 — Causes de non-conformité
+# Gold 5 — Causes de non-conformité aux limites sanitaires
 con.execute("""
 SELECT
     annee_prelevement,
     code_departement,
     cause_non_conformite,
     categorie_parametre,
-    COUNT(*) AS nb_non_conformes
+    SUM((NOT est_conforme_bact_limites)::INT) AS nb_non_conformes_bact,
+    SUM((NOT est_conforme_pc_limites)::INT)   AS nb_non_conformes_pc
 FROM silver
-WHERE NOT est_conforme
+WHERE NOT est_conforme_global
   AND cause_non_conformite IS NOT NULL
 GROUP BY 1, 2, 3, 4
-ORDER BY nb_non_conformes DESC
+ORDER BY (nb_non_conformes_bact + nb_non_conformes_pc) DESC
 LIMIT 15
 """).df()
 
@@ -215,9 +241,11 @@ LIMIT 15
 #
 # | Test | Logique |
 # |------|---------|
-# | `test_est_conforme` | `"C"` → `True` ; `"N"` → `False` ; `NULL` → `False` |
-# | `test_cause_non_conformite` | `None` si conforme, `libelle_parametre` sinon |
+# | `test_est_conforme_bact` | `"C"` → `True` ; `"N"` → `False` ; `NULL` → `False` |
+# | `test_est_conforme_pc` | idem pour physico-chimique |
+# | `test_est_conforme_global` | `True` seulement si bact ET pc limites = `"C"` |
+# | `test_cause_non_conformite` | `None` si conforme global, `libelle_parametre` sinon |
 # | `test_categorie_parametre` | `"E. coli"` → `microbiologie`, `"Nitrates"` → `chimie` |
 # | `test_null_code_commune_dropped` | Lignes sans `code_commune` absentes de Silver |
-# | `test_taux_conformite_range` | `taux_conformite_pct` entre `0` et `100` |
+# | `test_taux_conformite_range` | tous les taux entre `0` et `100` |
 # | `test_cog_join_rate` | > 95 % des communes ont un `code_departement` non nul |
