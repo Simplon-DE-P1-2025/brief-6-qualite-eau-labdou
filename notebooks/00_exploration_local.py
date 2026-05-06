@@ -43,17 +43,25 @@ def fetch_csv(url: str) -> pd.DataFrame:
     return df
 
 
-df_resultats    = fetch_hubeau("resultats_dis",  {"code_departement": DEPT, "size": 5000})
-df_communes_udi = fetch_hubeau("communes_udi",   {"code_departement": DEPT, "size": 5000}, max_pages=1)
-df_cog_communes = fetch_csv("https://www.insee.fr/fr/statistiques/fichier/8377162/v_commune_2025.csv")
+COG_BASE = "https://www.insee.fr/fr/statistiques/fichier/8377162"
 
-con.register("resultats",    df_resultats)
-con.register("communes_udi", df_communes_udi)
-con.register("cog_communes", df_cog_communes)
+df_resultats        = fetch_hubeau("resultats_dis", {"code_departement": DEPT, "size": 5000})
+df_communes_udi     = fetch_hubeau("communes_udi",  {"code_departement": DEPT, "size": 5000}, max_pages=1)
+df_cog_communes     = fetch_csv(f"{COG_BASE}/v_commune_2025.csv")
+df_cog_departements = fetch_csv(f"{COG_BASE}/v_departement_2025.csv")
+df_cog_regions      = fetch_csv(f"{COG_BASE}/v_region_2025.csv")
 
-print(f"resultats     : {len(df_resultats):>7,} lignes | {len(df_resultats.columns)} colonnes")
-print(f"communes_udi  : {len(df_communes_udi):>7,} lignes | {len(df_communes_udi.columns)} colonnes")
-print(f"cog_communes  : {len(df_cog_communes):>7,} lignes | {len(df_cog_communes.columns)} colonnes")
+con.register("resultats",        df_resultats)
+con.register("communes_udi",     df_communes_udi)
+con.register("cog_communes",     df_cog_communes)
+con.register("cog_departements", df_cog_departements)
+con.register("cog_regions",      df_cog_regions)
+
+print(f"resultats        : {len(df_resultats):>7,} lignes | {len(df_resultats.columns)} colonnes")
+print(f"communes_udi     : {len(df_communes_udi):>7,} lignes | {len(df_communes_udi.columns)} colonnes")
+print(f"cog_communes     : {len(df_cog_communes):>7,} lignes | {len(df_cog_communes.columns)} colonnes")
+print(f"cog_departements : {len(df_cog_departements):>7,} lignes | {len(df_cog_departements.columns)} colonnes")
+print(f"cog_regions      : {len(df_cog_regions):>7,} lignes | {len(df_cog_regions.columns)} colonnes")
 
 # %% [markdown]
 # ## 2. Structure de resultats_dis — colonnes réelles
@@ -144,58 +152,87 @@ con.execute("""
 # %% [markdown]
 # ## 7. Prototype Silver
 #
-# À ajuster selon les vrais noms de colonnes observés en sections 2 et 3.
+# `code_commune` dans resultats_dis désigne la commune du point de surveillance (une seule).
+# La relation UDI → communes multiples est dans `communes_udi`, pas dans ce champ.
+# Granularité Silver : une ligne par résultat d'analyse (code_prelevement × libelle_parametre).
 
 # %%
 con.execute("""
 CREATE OR REPLACE VIEW silver AS
+WITH source AS (
+    -- Extraction des valeurs numériques depuis les champs texte limite/reference
+    SELECT
+        r.*,
+        TRY_CAST(
+            regexp_extract(REPLACE(r.limite_qualite_parametre, ',', '.'), '\d+\.?\d*')
+            AS DOUBLE
+        ) AS _limite_num,
+        TRY_CAST(
+            regexp_extract(REPLACE(r.reference_qualite_parametre, ',', '.'), '\d+\.?\d*')
+            AS DOUBLE
+        ) AS _reference_num
+    FROM resultats r
+    WHERE r.code_commune    IS NOT NULL
+      AND r.date_prelevement IS NOT NULL
+)
 SELECT
-    r.code_commune,
-    r.nom_commune,
-    cog.dep                                          AS code_departement,
-    cog.reg                                          AS code_region,
+    s.code_prelevement,
+    s.code_commune,
     cog.libelle                                      AS libelle_commune,
-    TRY_CAST(r.date_prelevement AS DATE)             AS date_prelevement,
-    YEAR(TRY_CAST(r.date_prelevement AS DATE))       AS annee_prelevement,
-    r.libelle_parametre,
+    cog.dep                                          AS code_departement,
+    dep_ref.libelle                                  AS libelle_departement,
+    cog.reg                                          AS code_region,
+    reg_ref.libelle                                  AS libelle_region,
+    TRY_CAST(s.date_prelevement AS DATE)             AS date_prelevement,
+    YEAR(TRY_CAST(s.date_prelevement AS DATE))       AS annee_prelevement,
+    s.libelle_parametre,
     CASE
-        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(bacter|coli|entero|coliforme).*'
+        WHEN LOWER(s.libelle_parametre) SIMILAR TO
+            '.*(bact|coli|entero|ent.rocoques|coliforme|streptoc|l.gionel|pseudo|campylo|crypto|giardia|virus|phage).*'
             THEN 'microbiologie'
-        WHEN LOWER(r.libelle_parametre) SIMILAR TO '.*(tritium|dose total).*'
+        WHEN LOWER(s.libelle_parametre) SIMILAR TO
+            '.*(activit.|tritium|dose total|radioactiv|alpha global|beta global|uranium).*'
             THEN 'radioactivite'
+        WHEN LOWER(s.libelle_parametre) SIMILAR TO
+            '.*(temp.rature|aspect|saveur|couleur|coloration|odeur|turbidit.|opacit.|duret.).*'
+            THEN 'organoleptique'
         ELSE 'chimie'
     END                                              AS categorie_parametre,
 
-    -- Conformité bactériologique
-    r.conformite_limites_bact_prelevement            AS conformite_bact_limites,
-    r.conformite_references_bact_prelevement         AS conformite_bact_references,
-    r.conformite_limites_bact_prelevement = 'C'      AS est_conforme_bact_limites,
-    r.conformite_references_bact_prelevement = 'C'   AS est_conforme_bact_references,
+    -- Mesure et seuils
+    TRY_CAST(s.resultat_numerique AS DOUBLE)         AS resultat_numerique,
+    s._limite_num                                    AS limite_qualite,
+    s._reference_num                                 AS reference_qualite,
+    TRY_CAST(s.resultat_numerique AS DOUBLE) > s._limite_num
+                                                     AS depasse_limite_qualite,
+    TRY_CAST(s.resultat_numerique AS DOUBLE) > s._reference_num
+                                                     AS depasse_reference_qualite,
+
+    -- Conformité bactériologique (C/D/S/NULL = pas non-conforme ; N = non-conforme)
+    s.conformite_limites_bact_prelevement            AS conformite_bact_limites,
+    s.conformite_references_bact_prelevement         AS conformite_bact_references,
+    s.conformite_limites_bact_prelevement != 'N'     AS est_conforme_bact_limites,
+    s.conformite_references_bact_prelevement != 'N'  AS est_conforme_bact_references,
 
     -- Conformité physico-chimique
-    r.conformite_limites_pc_prelevement              AS conformite_pc_limites,
-    r.conformite_references_pc_prelevement           AS conformite_pc_references,
-    r.conformite_limites_pc_prelevement = 'C'        AS est_conforme_pc_limites,
-    r.conformite_references_pc_prelevement = 'C'     AS est_conforme_pc_references,
+    s.conformite_limites_pc_prelevement              AS conformite_pc_limites,
+    s.conformite_references_pc_prelevement           AS conformite_pc_references,
+    s.conformite_limites_pc_prelevement != 'N'       AS est_conforme_pc_limites,
+    s.conformite_references_pc_prelevement != 'N'    AS est_conforme_pc_references,
 
-    -- Conformité globale : conforme si bact ET pc sont conformes aux limites
-    (r.conformite_limites_bact_prelevement = 'C'
-     AND r.conformite_limites_pc_prelevement = 'C')  AS est_conforme_global,
-
-    -- Cause de non-conformité
-    CASE
-        WHEN r.conformite_limites_bact_prelevement != 'C'
-          OR r.conformite_limites_pc_prelevement   != 'C'
-        THEN r.libelle_parametre
-    END                                              AS cause_non_conformite,
+    -- Global : non conforme uniquement si au moins un champ = 'N' (D/S/NULL non pénalisés)
+    NOT (
+        s.conformite_limites_bact_prelevement = 'N'
+        OR s.conformite_limites_pc_prelevement = 'N'
+    )                                                AS est_conforme_global,
 
     u.code_reseau,
     u.nom_reseau
-FROM resultats r
-LEFT JOIN cog_communes cog ON r.code_commune = cog.com
-LEFT JOIN communes_udi u   ON r.code_commune = u.code_commune
-WHERE r.code_commune    IS NOT NULL
-  AND r.date_prelevement IS NOT NULL
+FROM source s
+LEFT JOIN cog_communes     cog     ON s.code_commune = cog.com
+LEFT JOIN cog_departements dep_ref ON cog.dep         = dep_ref.dep
+LEFT JOIN cog_regions      reg_ref ON cog.reg         = reg_ref.reg
+LEFT JOIN communes_udi     u       ON s.code_commune = u.code_commune
 """)
 
 con.execute("SELECT * FROM silver LIMIT 5").df()
@@ -208,10 +245,19 @@ con.execute("SELECT * FROM silver LIMIT 5").df()
 con.execute("""
 SELECT
     code_commune, libelle_commune, code_departement, annee_prelevement,
-    COUNT(*)                                                AS nb_analyses,
-    ROUND(100.0 * AVG(est_conforme_bact_limites::INT), 2)  AS taux_bact_limites_pct,
-    ROUND(100.0 * AVG(est_conforme_pc_limites::INT), 2)    AS taux_pc_limites_pct,
-    ROUND(100.0 * AVG(est_conforme_global::INT), 2)        AS taux_global_pct
+    COUNT(DISTINCT code_prelevement) AS nb_prelevements,
+    ROUND(
+        100.0 * COUNT(DISTINCT CASE WHEN est_conforme_bact_limites THEN code_prelevement END)
+        / NULLIF(COUNT(DISTINCT code_prelevement), 0), 2
+    ) AS taux_bact_limites_pct,
+    ROUND(
+        100.0 * COUNT(DISTINCT CASE WHEN est_conforme_pc_limites THEN code_prelevement END)
+        / NULLIF(COUNT(DISTINCT code_prelevement), 0), 2
+    ) AS taux_pc_limites_pct,
+    ROUND(
+        100.0 * COUNT(DISTINCT CASE WHEN est_conforme_global THEN code_prelevement END)
+        / NULLIF(COUNT(DISTINCT code_prelevement), 0), 2
+    ) AS taux_global_pct
 FROM silver
 GROUP BY 1, 2, 3, 4
 ORDER BY taux_global_pct ASC
@@ -219,25 +265,51 @@ LIMIT 10
 """).df()
 
 # %%
-# Gold 5 — Causes de non-conformité aux limites sanitaires
+# Gold 5 — Non-conformités par département et année
+# Les codes C/N/D/S sont au niveau du prélèvement global : on ne peut pas attribuer
+# la non-conformité à un paramètre précis depuis ces données.
 con.execute("""
 SELECT
     annee_prelevement,
     code_departement,
-    cause_non_conformite,
-    categorie_parametre,
-    SUM((NOT est_conforme_bact_limites)::INT) AS nb_non_conformes_bact,
-    SUM((NOT est_conforme_pc_limites)::INT)   AS nb_non_conformes_pc
+    libelle_departement,
+    COUNT(DISTINCT code_prelevement) AS nb_prelevements,
+    COUNT(DISTINCT CASE WHEN NOT est_conforme_bact_limites THEN code_prelevement END)
+        AS nb_non_conformes_bact,
+    COUNT(DISTINCT CASE WHEN NOT est_conforme_pc_limites   THEN code_prelevement END)
+        AS nb_non_conformes_pc,
+    COUNT(DISTINCT CASE WHEN NOT est_conforme_global       THEN code_prelevement END)
+        AS nb_non_conformes_global,
+    ROUND(
+        100.0 * COUNT(DISTINCT CASE WHEN NOT est_conforme_global THEN code_prelevement END)
+        / NULLIF(COUNT(DISTINCT code_prelevement), 0), 2
+    ) AS taux_non_conformite_pct
 FROM silver
-WHERE NOT est_conforme_global
-  AND cause_non_conformite IS NOT NULL
-GROUP BY 1, 2, 3, 4
-ORDER BY (nb_non_conformes_bact + nb_non_conformes_pc) DESC
+GROUP BY 1, 2, 3
+ORDER BY taux_non_conformite_pct DESC
 LIMIT 15
 """).df()
 
 # %% [markdown]
-# ## 9. Tests à implémenter
+# ## 9. Lancement de DuckDB UI
+#
+# Les DataFrames enregistrés via `con.register()` ne sont pas visibles par l'UI (connexion séparée).
+# On les matérialise en vraies tables DuckDB avant de démarrer l'UI.
+
+# %%
+con.execute("CREATE OR REPLACE TABLE resultats        AS SELECT * FROM resultats")
+con.execute("CREATE OR REPLACE TABLE communes_udi     AS SELECT * FROM communes_udi")
+con.execute("CREATE OR REPLACE TABLE cog_communes     AS SELECT * FROM cog_communes")
+con.execute("CREATE OR REPLACE TABLE cog_departements AS SELECT * FROM cog_departements")
+con.execute("CREATE OR REPLACE TABLE cog_regions      AS SELECT * FROM cog_regions")
+
+# %%
+con.execute("INSTALL ui; LOAD ui;")
+con.execute("CALL start_ui();")
+
+
+# %% [markdown]
+# ## 10. Tests à implémenter
 #
 # | Test | Logique |
 # |------|---------|
@@ -245,7 +317,8 @@ LIMIT 15
 # | `test_est_conforme_pc` | idem pour physico-chimique |
 # | `test_est_conforme_global` | `True` seulement si bact ET pc limites = `"C"` |
 # | `test_cause_non_conformite` | `None` si conforme global, `libelle_parametre` sinon |
-# | `test_categorie_parametre` | `"E. coli"` → `microbiologie`, `"Nitrates"` → `chimie` |
+# | `test_categorie_parametre` | `"E. coli"` → `microbiologie` |
+# | | `"Nitrates"` → `nitrate` ; `"Température"` → `organoleptique` |
 # | `test_null_code_commune_dropped` | Lignes sans `code_commune` absentes de Silver |
 # | `test_taux_conformite_range` | tous les taux entre `0` et `100` |
 # | `test_cog_join_rate` | > 95 % des communes ont un `code_departement` non nul |
