@@ -179,9 +179,12 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "duckdb" },
+    { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "python-semantic-release" },
+    { name = "requests" },
     { name = "ruff" },
 ]
 explore = [
@@ -195,14 +198,17 @@ requires-dist = [
     { name = "databricks-sdk", specifier = ">=0.28" },
     { name = "delta-spark", specifier = ">=3.2" },
     { name = "dlt", extras = ["databricks"], specifier = ">=1.4" },
+    { name = "duckdb", marker = "extra == 'dev'", specifier = ">=0.10" },
     { name = "duckdb", marker = "extra == 'explore'", specifier = ">=0.10" },
     { name = "jupyter", marker = "extra == 'explore'", specifier = ">=1.0" },
+    { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "pandas", marker = "extra == 'explore'", specifier = ">=2.0" },
     { name = "pyspark", specifier = ">=3.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "python-semantic-release", marker = "extra == 'dev'", specifier = ">=9.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", marker = "extra == 'dev'", specifier = ">=2.31" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
 ]
 provides-extras = ["dev", "explore"]
