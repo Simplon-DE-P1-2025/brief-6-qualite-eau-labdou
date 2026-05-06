@@ -20,7 +20,7 @@ from pyspark.sql import functions as F
 )
 def bronze_controles_sanitaires():
     return (
-        spark.table("qualite_eau.bronze.raw_controles_sanitaires")
+        spark.table("qualite_eau.bronze.resultats_dis")
         .withColumn("_ingested_at", F.current_timestamp())
         .withColumn("_source", F.lit("data.gouv.fr/controle-sanitaire-eau"))
         .withColumn(
