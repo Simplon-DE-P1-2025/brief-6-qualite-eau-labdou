@@ -75,12 +75,17 @@ def gold_evolution_temporelle():
             F.round(F.min("resultat_numerique"), 4).alias("minimum"),
             F.round(F.max("resultat_numerique"), 4).alias("maximum"),
             F.first("unite_mesure").alias("unite_mesure"),
+            # Dépassement numérique par paramètre — uniquement quand la valeur limite est connue
+            F.count(F.when(F.col("depasse_limite_qualite").isNotNull(), True))
+                .alias("nb_mesures_avec_limite"),
+            F.sum(F.col("depasse_limite_qualite").cast("int"))
+                .alias("nb_depassements_limite"),
             F.round(
-                F.countDistinct(
-                    F.when(F.col("est_conforme_global"), F.col("code_prelevement"))
-                ) / F.countDistinct("code_prelevement") * 100,
+                F.sum(F.col("depasse_limite_qualite").cast("int"))
+                / F.count(F.when(F.col("depasse_limite_qualite").isNotNull(), True))
+                * 100,
                 2,
-            ).alias("taux_conformite_pct"),
+            ).alias("taux_depassement_limite_pct"),
         )
     )
 
@@ -91,7 +96,7 @@ def gold_evolution_temporelle():
 
 @dlt.table(
     name="qualite_par_departement",
-    comment="Indicateurs de conformité agrégés par département et catégorie de paramètre",
+    comment="Indicateurs de conformité globale par département (niveau prélèvement)",
     table_properties={"quality": "gold"},
 )
 def gold_qualite_par_departement():
@@ -100,7 +105,7 @@ def gold_qualite_par_departement():
         .groupBy(
             "code_departement", "libelle_departement",
             "code_region", "libelle_region",
-            "annee_prelevement", "categorie_parametre",
+            "annee_prelevement",
         )
         .agg(
             F.countDistinct("code_prelevement").alias("nb_prelevements"),
@@ -123,7 +128,7 @@ def gold_qualite_par_departement():
 
 @dlt.table(
     name="non_conformites_par_departement",
-    comment="Prélèvements non conformes par département, année et catégorie",
+    comment="Prélèvements non conformes par département et année (niveau prélèvement global)",
     table_properties={"quality": "gold"},
 )
 def gold_non_conformites():
@@ -132,7 +137,6 @@ def gold_non_conformites():
         .groupBy(
             "annee_prelevement",
             "code_departement", "libelle_departement",
-            "categorie_parametre",
         )
         .agg(
             F.countDistinct("code_prelevement").alias("nb_prelevements"),
