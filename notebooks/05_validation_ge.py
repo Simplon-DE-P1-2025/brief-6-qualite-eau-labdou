@@ -17,7 +17,9 @@ context = gx.get_context()
 # COMMAND ----------
 # MAGIC %md ## Validation Silver
 
-silver_df = spark.table("qualite_eau.silver.controles_sanitaires").toPandas()
+# COMMAND ----------
+
+silver_df = spark.table("qualite_eau.silver_controles_sanitaires").toPandas()
 
 datasource = context.sources.add_or_update_pandas("silver_source")
 asset = datasource.add_dataframe_asset("silver_controles")
@@ -51,7 +53,9 @@ validator.save_expectation_suite(discard_failed_expectations=False)
 # COMMAND ----------
 # MAGIC %md ## Validation Gold — Conformité par commune
 
-gold_df = spark.table("qualite_eau.gold.conformite_par_commune").toPandas()
+# COMMAND ----------
+
+gold_df = spark.table("qualite_eau.conformite_par_commune").toPandas()
 
 asset_gold = datasource.add_dataframe_asset("gold_conformite_commune")
 batch_request_gold = asset_gold.build_batch_request(dataframe=gold_df)
@@ -72,6 +76,8 @@ validator_gold.save_expectation_suite(discard_failed_expectations=False)
 
 # COMMAND ----------
 # MAGIC %md ## Résumé
+
+# COMMAND ----------
 
 for name, results in [("Silver", results_silver), ("Gold conformite_commune", results_gold)]:
     status = "OK" if results.success else "ECHEC"

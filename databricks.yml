@@ -1,22 +1,18 @@
 bundle:
   name: qualite-eau-labdou
 
-variables:
-  databricks_host:
-    description: "URL du workspace Databricks Azure"
-
 targets:
   dev:
     mode: development
     workspace:
-      host: ${var.databricks_host}
+      host: https://adb-7405609780058208.8.azuredatabricks.net
     resources:
       pipelines:
         pipeline_dlt:
           name: "[dev] qualite-eau-dlt"
           development: true
-          catalog: qualite_eau
-          target: silver
+          target: qualite_eau
+          storage: abfss://unity-catalog@labdoustorage.dfs.core.windows.net/dlt/
           libraries:
             - notebook:
                 path: ./notebooks/02_bronze.py
@@ -33,7 +29,13 @@ targets:
               new_cluster:
                 spark_version: "15.4.x-scala2.12"
                 node_type_id: Standard_DS3_v2
-                num_workers: 2
+                num_workers: 0
+                spark_conf:
+                  spark.databricks.cluster.profile: singleNode
+                  spark.master: local[*]
+                  fs.azure.account.key.labdoustorage.dfs.core.windows.net: "{{secrets/qualite-eau/storage_account_key}}"
+                custom_tags:
+                  ResourceClass: SingleNode
           tasks:
             - task_key: ingestion
               job_cluster_key: main_cluster
@@ -56,14 +58,14 @@ targets:
   prod:
     mode: production
     workspace:
-      host: ${var.databricks_host}
+      host: https://adb-7405609780058208.8.azuredatabricks.net
     resources:
       pipelines:
         pipeline_dlt:
           name: qualite-eau-dlt
           development: false
-          catalog: qualite_eau
-          target: silver
+          target: qualite_eau
+          storage: abfss://unity-catalog@labdoustorage.dfs.core.windows.net/dlt/
           libraries:
             - notebook:
                 path: ./notebooks/02_bronze.py
@@ -84,6 +86,8 @@ targets:
                 spark_version: "15.4.x-scala2.12"
                 node_type_id: Standard_DS3_v2
                 num_workers: 2
+                spark_conf:
+                  fs.azure.account.key.labdoustorage.dfs.core.windows.net: "{{secrets/qualite-eau/storage_account_key}}"
           tasks:
             - task_key: ingestion
               job_cluster_key: main_cluster

@@ -39,11 +39,13 @@ COG_REGION_URL      = f"{COG_BASE}/v_region_2025.csv"
 pipeline = dlt.pipeline(
     pipeline_name="qualite_eau_ingestion",
     destination="databricks",
-    dataset_name="qualite_eau.bronze",
+    dataset_name="bronze",
 )
 
 # COMMAND ----------
 # MAGIC %md ## 1 — Hub'Eau : resultats_dis + communes_udi
+
+# COMMAND ----------
 
 hubeau_source = rest_api_source({
     "client": {
@@ -86,6 +88,7 @@ print(load_info_hubeau)
 # COMMAND ----------
 # MAGIC %md ## 2 — INSEE COG 2025 : communes, départements et régions
 
+# COMMAND ----------
 
 def _load_csv(url: str) -> list[dict]:
     response = requests.get(url, timeout=60)

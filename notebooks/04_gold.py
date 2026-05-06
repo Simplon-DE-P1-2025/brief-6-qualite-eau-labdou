@@ -17,6 +17,7 @@ from pyspark.sql import functions as F
 # COMMAND ----------
 # MAGIC %md ## Table 1 — Conformité par commune
 
+# COMMAND ----------
 
 @dlt.table(
     name="conformite_par_commune",
@@ -25,7 +26,7 @@ from pyspark.sql import functions as F
 )
 def gold_conformite_par_commune():
     return (
-        dlt.read("controles_sanitaires")
+        dlt.read("silver_controles_sanitaires")
         .groupBy(
             "code_commune", "libelle_commune",
             "code_departement", "libelle_departement",
@@ -55,6 +56,7 @@ def gold_conformite_par_commune():
 # COMMAND ----------
 # MAGIC %md ## Table 2 — Évolution temporelle des paramètres
 
+# COMMAND ----------
 
 @dlt.table(
     name="evolution_temporelle_parametres",
@@ -63,7 +65,7 @@ def gold_conformite_par_commune():
 )
 def gold_evolution_temporelle():
     return (
-        dlt.read("controles_sanitaires")
+        dlt.read("silver_controles_sanitaires")
         .withColumn("mois_prelevement", F.month("date_prelevement"))
         .groupBy(
             "annee_prelevement", "mois_prelevement",
@@ -93,6 +95,7 @@ def gold_evolution_temporelle():
 # COMMAND ----------
 # MAGIC %md ## Table 3 — Qualité par département
 
+# COMMAND ----------
 
 @dlt.table(
     name="qualite_par_departement",
@@ -101,7 +104,7 @@ def gold_evolution_temporelle():
 )
 def gold_qualite_par_departement():
     return (
-        dlt.read("controles_sanitaires")
+        dlt.read("silver_controles_sanitaires")
         .groupBy(
             "code_departement", "libelle_departement",
             "code_region", "libelle_region",
@@ -125,6 +128,7 @@ def gold_qualite_par_departement():
 # COMMAND ----------
 # MAGIC %md ## Table 4 — Non-conformités par département et année
 
+# COMMAND ----------
 
 @dlt.table(
     name="non_conformites_par_departement",
@@ -133,7 +137,7 @@ def gold_qualite_par_departement():
 )
 def gold_non_conformites():
     return (
-        dlt.read("controles_sanitaires")
+        dlt.read("silver_controles_sanitaires")
         .groupBy(
             "annee_prelevement",
             "code_departement", "libelle_departement",

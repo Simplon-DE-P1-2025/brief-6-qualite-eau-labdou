@@ -4,7 +4,7 @@
 # MAGIC %md
 # MAGIC # 03 — Silver
 # MAGIC Nettoyage, typage, enrichissement COG et calcul des indicateurs de conformité.
-# MAGIC Table cible : `qualite_eau.silver.controles_sanitaires`
+# MAGIC Table cible : `silver_controles_sanitaires`
 # MAGIC
 # MAGIC **Granularité** : une ligne = un résultat d'analyse (code_prelevement × libelle_parametre).
 # MAGIC Les champs de conformité sont au niveau du prélèvement et se répètent sur toutes
@@ -60,7 +60,7 @@ def _categorie(col_name: str) -> F.Column:
 # COMMAND ----------
 
 @dlt.table(
-    name="controles_sanitaires",
+    name="silver_controles_sanitaires",
     comment="Données nettoyées et enrichies — partitionnées par année et département",
     partition_cols=["annee_prelevement", "code_departement"],
     table_properties={"quality": "silver"},
@@ -69,12 +69,12 @@ def _categorie(col_name: str) -> F.Column:
 @dlt.expect_or_drop("date valide", "date_prelevement IS NOT NULL")
 def silver_controles_sanitaires():
     # Référentiels COG — tables Bronze brutes ingérées par dlt (dlthub)
-    cog_communes     = spark.table("qualite_eau.bronze.cog_communes")
-    cog_departements = spark.table("qualite_eau.bronze.cog_departements")
-    cog_regions      = spark.table("qualite_eau.bronze.cog_regions")
+    cog_communes     = spark.table("bronze.cog_communes")
+    cog_departements = spark.table("bronze.cog_departements")
+    cog_regions      = spark.table("bronze.cog_regions")
 
     enriched = (
-        dlt.read("controles_sanitaires")
+        dlt.read("bronze_controles_sanitaires")
         .withColumn("date_prelevement",
             F.to_date(F.col("date_prelevement"), "yyyy-MM-dd"))
         .withColumn("annee_prelevement", F.year("date_prelevement"))
