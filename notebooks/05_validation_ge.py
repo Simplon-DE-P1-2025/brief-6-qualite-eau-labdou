@@ -27,12 +27,19 @@ suite_silver = context.add_or_update_expectation_suite("silver_controles_sanitai
 validator = context.get_validator(batch_request=batch_request, expectation_suite=suite_silver)
 
 # Colonnes clés non nulles
-for col in ["code_commune", "date_prelevement", "libelle_parametre", "conclusion_conformite"]:
+for col in ["code_commune", "date_prelevement", "libelle_parametre",
+            "est_conforme_global", "code_departement"]:
     validator.expect_column_values_to_not_be_null(col)
 
 # Valeurs attendues
 validator.expect_column_values_to_be_in_set(
-    "categorie_parametre", ["microbiologie", "chimie", "radioactivite"]
+    "categorie_parametre", ["microbiologie", "radioactivite", "organoleptique", "chimie"]
+)
+validator.expect_column_values_to_be_in_set(
+    "conformite_bact_limites", ["C", "N", "D", "S", None]
+)
+validator.expect_column_values_to_be_in_set(
+    "conformite_pc_limites", ["C", "N", "D", "S", None]
 )
 validator.expect_column_values_to_be_between("resultat_numerique", min_value=0, mostly=0.95)
 validator.expect_column_values_to_match_regex("code_commune", r"^\d{5}$", mostly=0.90)
@@ -50,11 +57,15 @@ asset_gold = datasource.add_dataframe_asset("gold_conformite_commune")
 batch_request_gold = asset_gold.build_batch_request(dataframe=gold_df)
 
 suite_gold = context.add_or_update_expectation_suite("gold_conformite_par_commune")
-validator_gold = context.get_validator(batch_request=batch_request_gold, expectation_suite=suite_gold)
+validator_gold = context.get_validator(
+    batch_request=batch_request_gold, expectation_suite=suite_gold
+)
 
-validator_gold.expect_column_values_to_not_be_null("taux_conformite_pct")
-validator_gold.expect_column_values_to_be_between("taux_conformite_pct", min_value=0, max_value=100)
-validator_gold.expect_column_values_to_be_between("nb_analyses", min_value=1)
+validator_gold.expect_column_values_to_not_be_null("taux_global_pct")
+validator_gold.expect_column_values_to_be_between("taux_global_pct", min_value=0, max_value=100)
+validator_gold.expect_column_values_to_be_between("taux_bact_pct", min_value=0, max_value=100)
+validator_gold.expect_column_values_to_be_between("taux_pc_pct", min_value=0, max_value=100)
+validator_gold.expect_column_values_to_be_between("nb_prelevements", min_value=1)
 
 results_gold = validator_gold.validate()
 validator_gold.save_expectation_suite(discard_failed_expectations=False)
@@ -65,8 +76,10 @@ validator_gold.save_expectation_suite(discard_failed_expectations=False)
 for name, results in [("Silver", results_silver), ("Gold conformite_commune", results_gold)]:
     status = "OK" if results.success else "ECHEC"
     stats = results.statistics
-    print(f"[{status}] {name} — {stats['successful_expectations']}/{stats['evaluated_expectations']} expectations validées")
+    print(
+        f"[{status}] {name} — "
+        f"{stats['successful_expectations']}/{stats['evaluated_expectations']} expectations validées"
+    )
 
-# Fail the notebook (et donc le job Databricks) si une validation échoue
 assert results_silver.success, "Validation Silver échouée"
 assert results_gold.success, "Validation Gold échouée"

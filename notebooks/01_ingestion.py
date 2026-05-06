@@ -11,9 +11,10 @@
 # MAGIC | Hub'Eau | `communes_udi` | `communes_udi` | replace |
 # MAGIC | INSEE COG 2025 | `v_commune_2025.csv` | `cog_communes` | replace |
 # MAGIC | INSEE COG 2025 | `v_departement_2025.csv` | `cog_departements` | replace |
+# MAGIC | INSEE COG 2025 | `v_region_2025.csv` | `cog_regions` | replace |
 
 # COMMAND ----------
-%pip install "dlt[databricks,rest_api]>=1.4" --quiet
+%pip install "dlt[databricks]>=1.4" --quiet
 dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -30,8 +31,10 @@ os.environ["DATABRICKS_HTTP_PATH"]       = dbutils.secrets.get("qualite-eau", "d
 os.environ["DATABRICKS_ACCESS_TOKEN"]    = dbutils.secrets.get("qualite-eau", "databricks_token")
 
 HUBEAU_BASE_URL     = "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/"
-COG_COMMUNE_URL     = "https://www.insee.fr/fr/statistiques/fichier/8377162/v_commune_2025.csv"
-COG_DEPARTEMENT_URL = "https://www.insee.fr/fr/statistiques/fichier/8377162/v_departement_2025.csv"
+COG_BASE            = "https://www.insee.fr/fr/statistiques/fichier/8377162"
+COG_COMMUNE_URL     = f"{COG_BASE}/v_commune_2025.csv"
+COG_DEPARTEMENT_URL = f"{COG_BASE}/v_departement_2025.csv"
+COG_REGION_URL      = f"{COG_BASE}/v_region_2025.csv"
 
 pipeline = dlt.pipeline(
     pipeline_name="qualite_eau_ingestion",
@@ -81,7 +84,7 @@ load_info_hubeau = pipeline.run(hubeau_source)
 print(load_info_hubeau)
 
 # COMMAND ----------
-# MAGIC %md ## 2 — INSEE COG 2025 : communes et départements
+# MAGIC %md ## 2 — INSEE COG 2025 : communes, départements et régions
 
 
 def _load_csv(url: str) -> list[dict]:
@@ -102,5 +105,10 @@ def cog_departements():
     yield from _load_csv(COG_DEPARTEMENT_URL)
 
 
-load_info_cog = pipeline.run([cog_communes(), cog_departements()])
+@dlt.resource(name="cog_regions", write_disposition="replace", primary_key="reg")
+def cog_regions():
+    yield from _load_csv(COG_REGION_URL)
+
+
+load_info_cog = pipeline.run([cog_communes(), cog_departements(), cog_regions()])
 print(load_info_cog)
