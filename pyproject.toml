@@ -18,6 +18,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "python-semantic-release>=9.0",
+    "duckdb>=0.10",
+    "pandas>=2.0",
+    "requests>=2.31",
 ]
 explore = [
     "duckdb>=0.10",
@@ -44,6 +47,7 @@ select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: tests nécessitant un appel API Hub'Eau (exclure avec -m 'not slow')"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
