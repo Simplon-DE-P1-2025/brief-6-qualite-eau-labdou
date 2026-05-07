@@ -27,6 +27,11 @@ explore = [
     "pandas>=2.0",
     "jupyter>=1.0"
 ]
+api = [
+    "fastapi>=0.136.1",
+    "pydantic-settings>=2.14.0",
+    "uvicorn[standard]>=0.46.0",
+]
 
 [build-system]
 requires = ["hatchling"]
