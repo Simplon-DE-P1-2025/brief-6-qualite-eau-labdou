@@ -5,7 +5,7 @@ targets:
   dev:
     mode: development
     workspace:
-      host: https://adb-7405609780058208.8.azuredatabricks.net
+      host: https://adb-7405606045606129.9.azuredatabricks.net
     resources:
       pipelines:
         pipeline_dlt:
@@ -28,7 +28,7 @@ targets:
             - job_cluster_key: main_cluster
               new_cluster:
                 spark_version: "15.4.x-scala2.12"
-                node_type_id: Standard_DS3_v2
+                node_type_id: Standard_D4ds_v4
                 num_workers: 0
                 spark_conf:
                   spark.databricks.cluster.profile: singleNode
@@ -58,7 +58,7 @@ targets:
   prod:
     mode: production
     workspace:
-      host: https://adb-7405609780058208.8.azuredatabricks.net
+      host: https://adb-7405606045606129.9.azuredatabricks.net
     resources:
       pipelines:
         pipeline_dlt:
@@ -84,7 +84,7 @@ targets:
             - job_cluster_key: main_cluster
               new_cluster:
                 spark_version: "15.4.x-scala2.12"
-                node_type_id: Standard_DS3_v2
+                node_type_id: Standard_D4ds_v4
                 num_workers: 2
                 spark_conf:
                   fs.azure.account.key.labdoustorage.dfs.core.windows.net: "{{secrets/qualite-eau/storage_account_key}}"
