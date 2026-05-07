@@ -1,0 +1,11 @@
+schema_bronze: bronze
+schema_silver: silver
+schema_gold: gold
+
+source:
+  format: csv
+  path: abfss://raw@labdoustorage.dfs.core.windows.net/
+
+pipeline:
+  continuous: false
+  development: true

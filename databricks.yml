@@ -1,0 +1,108 @@
+bundle:
+  name: qualite-eau-labdou
+
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: https://adb-7405606045606129.9.azuredatabricks.net
+    resources:
+      pipelines:
+        pipeline_dlt:
+          name: "[dev] qualite-eau-dlt"
+          development: true
+          target: qualite_eau
+          storage: abfss://unity-catalog@labdoustorage.dfs.core.windows.net/dlt/
+          libraries:
+            - notebook:
+                path: ./notebooks/02_bronze.py
+            - notebook:
+                path: ./notebooks/03_silver.py
+            - notebook:
+                path: ./notebooks/04_gold.py
+
+      jobs:
+        pipeline_complet:
+          name: "[dev] qualite-eau-pipeline-complet"
+          job_clusters:
+            - job_cluster_key: main_cluster
+              new_cluster:
+                spark_version: "15.4.x-scala2.12"
+                node_type_id: Standard_D4ds_v4
+                num_workers: 0
+                spark_conf:
+                  spark.databricks.cluster.profile: singleNode
+                  spark.master: local[*]
+                  fs.azure.account.key.labdoustorage.dfs.core.windows.net: "{{secrets/qualite-eau/storage_account_key}}"
+                custom_tags:
+                  ResourceClass: SingleNode
+          tasks:
+            - task_key: ingestion
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/01_ingestion.py
+
+            - task_key: transformation_dlt
+              depends_on:
+                - task_key: ingestion
+              pipeline_task:
+                pipeline_id: ${resources.pipelines.pipeline_dlt.id}
+
+            - task_key: validation_ge
+              depends_on:
+                - task_key: transformation_dlt
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/05_validation_ge.py
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405606045606129.9.azuredatabricks.net
+    resources:
+      pipelines:
+        pipeline_dlt:
+          name: qualite-eau-dlt
+          development: false
+          target: qualite_eau
+          storage: abfss://unity-catalog@labdoustorage.dfs.core.windows.net/dlt/
+          libraries:
+            - notebook:
+                path: ./notebooks/02_bronze.py
+            - notebook:
+                path: ./notebooks/03_silver.py
+            - notebook:
+                path: ./notebooks/04_gold.py
+
+      jobs:
+        pipeline_complet:
+          name: qualite-eau-pipeline-complet
+          schedule:
+            quartz_cron_expression: "0 0 2 * * ?"
+            timezone_id: Europe/Paris
+          job_clusters:
+            - job_cluster_key: main_cluster
+              new_cluster:
+                spark_version: "15.4.x-scala2.12"
+                node_type_id: Standard_D4ds_v4
+                num_workers: 2
+                spark_conf:
+                  fs.azure.account.key.labdoustorage.dfs.core.windows.net: "{{secrets/qualite-eau/storage_account_key}}"
+          tasks:
+            - task_key: ingestion
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/01_ingestion.py
+
+            - task_key: transformation_dlt
+              depends_on:
+                - task_key: ingestion
+              pipeline_task:
+                pipeline_id: ${resources.pipelines.pipeline_dlt.id}
+
+            - task_key: validation_ge
+              depends_on:
+                - task_key: transformation_dlt
+              job_cluster_key: main_cluster
+              notebook_task:
+                notebook_path: ./notebooks/05_validation_ge.py

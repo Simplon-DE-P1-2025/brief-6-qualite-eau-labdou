@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Exploration locale
+*.duckdb
+notebooks/exploration/
+
+# Claude
+.claude
