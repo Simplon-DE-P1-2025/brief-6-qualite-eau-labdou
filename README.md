@@ -30,17 +30,19 @@ Ingérer, transformer et analyser des données de qualité de l'eau en appliquan
 
 | Couche | Outil |
 |--------|-------|
-| Ingestion API | [`dlt`](https://dlthub.com) — pagination, incrémental, schéma automatique |
+| Ingestion API | [`dlt`](https://dlthub.com) — pagination manuelle, schéma automatique |
 | Transformation | Databricks Delta Live Tables |
 | Stockage | Delta Lake / Hive Metastore |
-| Orchestration | Databricks Workflows |
+| Infra | Azure Databricks (West Europe), ADLS Gen2 |
+| Orchestration | Databricks Workflows (Databricks Asset Bundle) |
 | Tests | pytest + DuckDB (logique SQL locale) |
 
 ## Prérequis
 
 - Python >= 3.11
-- Accès à un workspace Databricks
+- Accès à un workspace Databricks (Azure)
 - `uv` (gestionnaire de paquets recommandé)
+- Databricks CLI v0.2+ configuré (`databricks auth login`)
 
 ## Installation
 
@@ -68,6 +70,19 @@ uv run pytest tests/ -m "not slow"
 
 # Tous les tests (requiert accès réseau)
 uv run pytest tests/
+```
+
+## Déploiement Databricks
+
+```bash
+# Valider la configuration
+databricks bundle validate -t dev
+
+# Déployer les ressources (pipeline DLT + job)
+databricks bundle deploy -t dev
+
+# Lancer le pipeline complet
+databricks bundle run pipeline_complet -t dev
 ```
 
 ## Architecture
@@ -113,6 +128,26 @@ Les champs de conformité (`est_conforme_bact_limites`, `est_conforme_pc_limites
 
 > `evolution_temporelle_parametres` utilise `depasse_limite_qualite` (niveau paramètre) et non `est_conforme_global` (niveau prélèvement) pour rester cohérent avec le groupe par paramètre.
 
+## Problèmes rencontrés
+
+### Disponibilité des VMs Azure
+
+La souscription Simplon présente un quota limité sur les familles de VMs les plus courantes. Plusieurs types de machines se sont révélés indisponibles en France Central, puis en West Europe, nécessitant une analyse méthodique du stock disponible via Azure CLI avant d'identifier une combinaison région + type de VM fonctionnelle.
+
+### Compatibilité des dépendances dans l'environnement Databricks
+
+L'installation de `dlt` via `%pip install` dans un notebook Databricks entraîne des conflits avec des dépendances pré-installées dans le runtime du cluster. La résolution a nécessité d'identifier les incompatibilités et de contraindre les versions transitives, ainsi que de réécrire certaines parties de l'ingestion pour éviter les sous-modules non accessibles dans ce contexte.
+
+### Logique de conformité et déduplication Gold
+
+Les champs de conformité dans Hub'Eau sont définis au niveau du **prélèvement**, pas du paramètre analysé. Un prélèvement génère plusieurs lignes dans la table Silver (une par paramètre) — toutes avec la même valeur de conformité. Cela impose d'utiliser `COUNT(DISTINCT code_prelevement)` dans toutes les agrégations Gold, et de distinguer soigneusement les métriques relevant du niveau prélèvement (conformité globale) de celles relevant du niveau paramètre (dépassement de seuil numérique).
+
+## Prochaines itérations
+
+- **Pipeline Azure fonctionnel de bout en bout** : finaliser l'exécution du pipeline sur le cluster Databricks West Europe et valider les tables Bronze → Silver → Gold produites.
+- **CI/CD complet** : configurer GitHub Actions pour déclencher automatiquement `databricks bundle deploy` sur merge vers `main`, avec les tests unitaires en gate de qualité.
+- **Semantic Release** : valider le bon fonctionnement de `python-semantic-release` pour la gestion automatique des versions et du CHANGELOG à partir des commits conventionnels.
+
 ## Exploration locale
 
 Avant de construire les couches Silver et Gold sur Databricks, une exploration des données brutes a été réalisée en local avec DuckDB (`notebooks/00_exploration_local.py`). L'objectif était de comprendre la structure réelle de l'API Hub'Eau et de prototyper les transformations.
@@ -123,10 +158,10 @@ Avant de construire les couches Silver et Gold sur Databricks, une exploration d
 - INSEE COG 2025 — communes, départements et régions (libellés et codes)
 
 **Points clés découverts :**
-- Granularité : une ligne = un résultat d'analyse (paramètre × prélèvement). Les champs de conformité (`conformite_limites_bact_prelevement`, `conformite_limites_pc_prelevement`, etc.) sont au niveau du **prélèvement** et se répètent sur toutes les lignes du même prélèvement.
-- Non-conformité : les valeurs possibles sont `C` (conforme), `N` (non conforme), `D` (dérogation), `S` (sans objet). On considère un prélèvement non conforme uniquement si au moins un champ = `N`.
-- `code_commune` dans `resultats_dis` désigne la commune du **point de surveillance** (toujours une seule valeur). La relation UDI → plusieurs communes est dans `communes_udi`.
-- `COUNT(DISTINCT code_prelevement)` est nécessaire dans les agrégats Gold pour ne pas compter plusieurs fois un même prélèvement (répété par paramètre analysé).
+- Granularité : une ligne = un résultat d'analyse (paramètre × prélèvement). Les champs de conformité sont au niveau du **prélèvement** et se répètent sur toutes les lignes du même prélèvement.
+- Non-conformité : valeurs possibles `C` (conforme), `N` (non conforme), `D` (dérogation), `S` (sans objet). Un prélèvement est non conforme uniquement si au moins un champ = `N`.
+- `code_commune` dans `resultats_dis` désigne la commune du point de surveillance (toujours une seule valeur).
+- `COUNT(DISTINCT code_prelevement)` est nécessaire dans les agrégats Gold.
 
 **Pour lancer l'exploration :**
 ```bash

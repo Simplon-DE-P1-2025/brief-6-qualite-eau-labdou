@@ -14,7 +14,7 @@
 # MAGIC | INSEE COG 2025 | `v_region_2025.csv` | `cog_regions` | replace |
 
 # COMMAND ----------
-%pip install "dlt[databricks]>=1.4" --quiet
+%pip install "dlt[databricks]>=1.4" "protobuf>=3.20.2,<5" --quiet
 dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -24,10 +24,8 @@ import os
 import dlt  # dlthub — pas le module Databricks DLT
 import pandas as pd
 import requests
-from dlt.sources.rest_api import rest_api_source
 
 os.environ["DATABRICKS_SERVER_HOSTNAME"] = dbutils.secrets.get("qualite-eau", "databricks_host")
-os.environ["DATABRICKS_HTTP_PATH"]       = dbutils.secrets.get("qualite-eau", "databricks_http_path")
 os.environ["DATABRICKS_ACCESS_TOKEN"]    = dbutils.secrets.get("qualite-eau", "databricks_token")
 
 HUBEAU_BASE_URL     = "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/"
@@ -47,42 +45,34 @@ pipeline = dlt.pipeline(
 
 # COMMAND ----------
 
-hubeau_source = rest_api_source({
-    "client": {
-        "base_url": HUBEAU_BASE_URL,
-    },
-    "resources": [
-        {
-            "name": "resultats_dis",
-            "endpoint": {
-                "path": "resultats_dis",
-                "params": {"size": 10000},
-                "paginator": {"type": "json_link", "next_url_path": "next"},
-                "data_selector": "data",
-                "incremental": {
-                    "cursor_path": "date_prelevement",
-                    "initial_value": "2020-01-01",
-                    "param": "date_min_prelevement",
-                },
-            },
-            "primary_key": ["code_prelevement", "code_parametre"],
-            "write_disposition": "merge",
-        },
-        {
-            "name": "communes_udi",
-            "endpoint": {
-                "path": "communes_udi",
-                "params": {"size": 10000},
-                "paginator": {"type": "json_link", "next_url_path": "next"},
-                "data_selector": "data",
-            },
-            "primary_key": ["code_commune", "code_reseau"],
-            "write_disposition": "replace",
-        },
-    ],
-})
+def _paginate(endpoint: str, params: dict):
+    """Parcourt toutes les pages Hub'Eau et yielde les enregistrements."""
+    url = f"{HUBEAU_BASE_URL}{endpoint}"
+    while url:
+        response = requests.get(url, params=params, timeout=60)
+        response.raise_for_status()
+        body = response.json()
+        yield from body.get("data", [])
+        url = body.get("next")
+        params = {}  # les pages suivantes utilisent l'URL complète de `next`
 
-load_info_hubeau = pipeline.run(hubeau_source)
+
+@dlt.resource(name="resultats_dis", write_disposition="merge",
+              primary_key=["code_prelevement", "code_parametre"])
+def resultats_dis():
+    yield from _paginate("resultats_dis", {
+        "size": 10000,
+        "date_min_prelevement": "2020-01-01",
+    })
+
+
+@dlt.resource(name="communes_udi", write_disposition="replace",
+              primary_key=["code_commune", "code_reseau"])
+def communes_udi():
+    yield from _paginate("communes_udi", {"size": 10000})
+
+
+load_info_hubeau = pipeline.run([resultats_dis(), communes_udi()])
 print(load_info_hubeau)
 
 # COMMAND ----------
