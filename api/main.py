@@ -1,9 +1,12 @@
 # api/main.py
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+
 from api.config import settings
 from api.dependencies import init_repo
-from api.routes import conformite, qualite, evolution
+from api.routes import conformite, evolution, qualite
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

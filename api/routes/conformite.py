@@ -1,8 +1,9 @@
 # api/routes/conformite.py
 from fastapi import APIRouter, Depends, Query
+
+from api.db.base import AbstractRepo
 from api.dependencies import get_repo
 from api.models.conformite import ConformiteParCommune
-from api.db.base import AbstractRepo
 
 router = APIRouter()
 

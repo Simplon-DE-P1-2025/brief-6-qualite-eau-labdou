@@ -7,7 +7,6 @@ Toutes les assertions portent sur la table `silver_inline` de la fixture `con`
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

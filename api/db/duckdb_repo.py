@@ -1,10 +1,12 @@
 # api/db/duckdb_repo.py
 import io
+
 import duckdb
 import pandas as pd
 import requests
-from api.db.base import AbstractRepo
+
 from api.config import settings
+from api.db.base import AbstractRepo
 
 BASE_URL = "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable"
 COG_BASE = "https://www.insee.fr/fr/statistiques/fichier/8377162"

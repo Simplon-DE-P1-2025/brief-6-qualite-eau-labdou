@@ -1,6 +1,7 @@
 # api/models/conformite.py
 from pydantic import BaseModel
 
+
 class ConformiteParCommune(BaseModel):
     code_commune: str
     libelle_commune: str | None = None

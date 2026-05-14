@@ -1,6 +1,6 @@
 # api/dependencies.py
-from api.db.base import AbstractRepo
 from api.config import settings
+from api.db.base import AbstractRepo
 
 _repo: AbstractRepo | None = None
 
