@@ -1,6 +1,7 @@
 # api/db/base.py
 from abc import ABC, abstractmethod
 
+
 class AbstractRepo(ABC):
     """Contrat commun à DuckDB et Databricks."""
 

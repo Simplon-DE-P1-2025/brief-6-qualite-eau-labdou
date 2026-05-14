@@ -46,9 +46,14 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["notebooks/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"api/db/duckdb_repo.py" = ["E501"]
+"tests/*" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -58,7 +63,7 @@ markers = ["slow: tests nécessitant un appel API Hub'Eau (exclure avec -m 'not 
 version_toml = ["pyproject.toml:project.version"]
 branch = "main"
 changelog_file = "CHANGELOG.md"
-build_command = false
+build_command = ""
 upload_to_pypi = false
 upload_to_vcs_release = true
-commit_parser = "angular"
+commit_parser = "conventional"

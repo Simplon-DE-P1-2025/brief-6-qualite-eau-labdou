@@ -1,6 +1,7 @@
 # api/models/qualite.py
 from pydantic import BaseModel
 
+
 class QualiteParDepartement(BaseModel):
     code_departement: str
     libelle_departement: str | None = None

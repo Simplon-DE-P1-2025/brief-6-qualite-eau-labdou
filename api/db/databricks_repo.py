@@ -1,8 +1,10 @@
 # api/db/databricks_repo.py
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
-from api.db.base import AbstractRepo
+
 from api.config import settings
+from api.db.base import AbstractRepo
+
 
 class DatabricksRepo(AbstractRepo):
     def __init__(self):

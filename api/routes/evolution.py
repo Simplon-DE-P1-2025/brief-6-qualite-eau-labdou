@@ -1,9 +1,11 @@
 # api/routes/evolution.py
 from typing import Literal
+
 from fastapi import APIRouter, Depends
+
+from api.db.base import AbstractRepo
 from api.dependencies import get_repo
 from api.models.evolution import EvolutionTemporelleParametres
-from api.db.base import AbstractRepo
 
 router = APIRouter()
 

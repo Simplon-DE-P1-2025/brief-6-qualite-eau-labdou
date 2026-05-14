@@ -1,6 +1,7 @@
 # api/models/evolution.py
 from pydantic import BaseModel
 
+
 class EvolutionTemporelleParametres(BaseModel):
     annee_prelevement: int
     mois_prelevement: int

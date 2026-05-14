@@ -1,6 +1,8 @@
 # api/config.py
 from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     # Lit depuis les variables d'environnement ou le fichier .env
